@@ -19,8 +19,8 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default_secret_key')
 
-# ping_interval and ping_timeout help with connection stability
-socketio = SocketIO(app, cors_allowed_origins="*", ping_interval=10, ping_timeout=20)
+# threading mode: no eventlet/gevent required, works on any Python version
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=10, ping_timeout=20)
 
 class RoomError(Exception):
     pass
