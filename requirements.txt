@@ -1,6 +1,7 @@
 Flask==3.0.0
 Flask-SocketIO==5.3.6
-eventlet==0.33.3
+gevent
+gevent-websocket
 SQLAlchemy==2.0.23
 python-dotenv==1.0.0
 gunicorn
