@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lightweight Flask Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body { font-family: monospace; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .hidden { display: none; }
+        #chat-window { height: 300px; border: 1px solid black; overflow-y: scroll; padding: 5px; margin-bottom: 5px; }
+        .private { color: red; font-weight: bold; }
+        div { margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div id="auth-section" class="card">
+        <h2>Login / Register</h2>
+        <input type="text" id="username" placeholder="Username" autocomplete="off">
+        <input type="password" id="password" placeholder="Password">
+        <div style="margin-top: 10px;">
+            <button onclick="login()">Login</button>
+            <button onclick="register()" style="background: #28a745;">Register</button>
+        </div>
+    </div>
+
+    <div id="lobby-section" class="card hidden">
+        <h2>Lobby - Welcome <span id="lobby-user"></span></h2>
+        <button onclick="logout()" style="margin-bottom: 15px;">Logout</button>
+        <div class="flex">
+            <div class="flex-1">
+                <h3>Rooms</h3>
+                <ul id="room-list"></ul>
+                <hr>
+                <input type="text" id="new-room-name" placeholder="New Room Name">
+                <button onclick="createRoom()">Create Room</button>
+                <br><br>
+                <input type="text" id="enter-room-name" placeholder="Room Name to Enter">
+                <button onclick="enterRoom()">Enter Room</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="chat-section" class="card hidden">
+        <h2>Room: <span id="current-room-name"></span></h2>
+        <button onclick="leaveRoom()" style="background: #dc3545; margin-bottom: 10px;">Back to Lobby</button>
+        <div class="flex">
+            <div style="flex: 3;">
+                <div id="chat-window"></div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="message-input" placeholder="Type a message (or \private username msg)">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+            <div style="flex: 1;">
+                <h3>Users in Room</h3>
+                <ul id="user-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentUser = null;
+        let currentRoom = null;
+
+        // --- Socket Listeners ---
+        socket.on('register_ack', (data) => {
+            alert(data.message);
+        });
+
+        socket.on('login_ack', (data) => {
+            if (data.status === 'ok') {
+                currentUser = data.data.username;
+                currentRoom = 'lobby';
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('lobby-section').classList.remove('hidden');
+                document.getElementById('lobby-user').innerText = currentUser;
+                socket.emit('list_lobby');
+            } else {
+                alert(data.message);
+            }
+        });
+
+        socket.on('logout_ack', (data) => {
+            if (data.status === 'ok') {
+                currentUser = null;
+                currentRoom = null;
+                document.getElementById('lobby-section').classList.add('hidden');
+                document.getElementById('auth-section').classList.remove('hidden');
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+                alert(data.message);
+            }
+        });
+
+        socket.on('list_lobby_ack', (data) => {
+            if (currentRoom !== 'lobby') return;
+            const list = document.getElementById('room-list');
+            list.innerHTML = '';
+            for (const [room, users] of Object.entries(data.data)) {
+                list.innerHTML += `<li><strong>${room}</strong> (${users.length} users)</li>`;
+            }
+        });
+
+        socket.on('create_room_ack', (data) => {
+            alert(data.message);
+        });
+
+        socket.on('enter_room_ack', (data) => {
+            if (data.status === 'ok') {
+                currentRoom = data.data.room;
+                document.getElementById('lobby-section').classList.add('hidden');
+                document.getElementById('chat-section').classList.remove('hidden');
+                document.getElementById('current-room-name').innerText = currentRoom;
+                document.getElementById('chat-window').innerHTML = '';
+                socket.emit('list_room', { room: currentRoom });
+            } else {
+                alert(data.message);
+            }
+        });
+
+        socket.on('leave_room_ack', (data) => {
+            if (data.status === 'ok') {
+                currentRoom = 'lobby';
+                document.getElementById('chat-section').classList.add('hidden');
+                document.getElementById('lobby-section').classList.remove('hidden');
+                socket.emit('list_lobby');
+            }
+        });
+
+        socket.on('list_room_ack', (data) => {
+            if (currentRoom === 'lobby' || !data.data[currentRoom]) return;
+            const users = data.data[currentRoom];
+            const list = document.getElementById('user-list');
+            list.innerHTML = '';
+            users.forEach(u => {
+                list.innerHTML += `<li>${u === currentUser ? '<b>'+u+' (You)</b>' : u}</li>`;
+            });
+        });
+
+        socket.on('msg', (data) => {
+            const win = document.getElementById('chat-window');
+            const isPrivate = data.to !== 'public';
+            const sender = data.from === currentUser ? 'You' : data.from;
+            const prefix = isPrivate ? `[Private to ${data.to === currentUser ? 'You' : data.to}] ` : '';
+            win.innerHTML += `<div class="msg ${isPrivate ? 'private' : ''}"><b>${prefix}${sender}:</b> ${data.text}</div>`;
+            win.scrollTop = win.scrollHeight;
+        });
+
+        // --- UI Actions ---
+        function register() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            socket.emit('register', { username: u, password: p });
+        }
+
+        function login() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            socket.emit('login', { username: u, password: p });
+        }
+
+        function logout() {
+            socket.emit('logout');
+        }
+
+        function createRoom() {
+            const r = document.getElementById('new-room-name').value;
+            socket.emit('create_room', { room: r });
+            document.getElementById('new-room-name').value = '';
+        }
+
+        function enterRoom() {
+            const r = document.getElementById('enter-room-name').value;
+            socket.emit('enter_room', { room: r, current_room: currentRoom });
+        }
+
+        function leaveRoom() {
+            socket.emit('leave_room', { room: currentRoom });
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const val = input.value.trim();
+            if (!val) return;
+
+            if (val.startsWith('\\private ')) {
+                const parts = val.split(' ');
+                if (parts.length >= 3) {
+                    const to = parts[1];
+                    const text = parts.slice(2).join(' ');
+                    socket.emit('msg', { to: to, text: text, room: currentRoom });
+                }
+            } else {
+                socket.emit('msg', { to: 'public', text: val, room: currentRoom });
+            }
+            input.value = '';
+        }
+
+        // Handle Enter key for messaging
+        document.getElementById('message-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
