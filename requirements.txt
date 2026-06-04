@@ -1,5 +1,5 @@
 Flask==3.0.0
 Flask-SocketIO==5.3.6
-SQLAlchemy==2.0.23
+SQLAlchemy==2.0.36
 python-dotenv==1.0.0
 gunicorn
